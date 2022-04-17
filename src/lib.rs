@@ -91,14 +91,12 @@ pub async fn run() {
 }
 
 struct State {
-  alt_render_pipeline: wgpu::RenderPipeline,
-  config: wgpu::SurfaceConfiguration,
+  surface: wgpu::Surface,
   device: wgpu::Device,
   queue: wgpu::Queue,
-  render_pipeline: wgpu::RenderPipeline,
-  select_alt_pipeline: bool,
+  config: wgpu::SurfaceConfiguration,
   size: winit::dpi::PhysicalSize<u32>,
-  surface: wgpu::Surface,
+  render_pipeline: wgpu::RenderPipeline,
 }
 
 impl State {
@@ -146,8 +144,6 @@ impl State {
 
     let shader = device.create_shader_module(&include_wgsl!("shader.wgsl"));
 
-    let alt_shader = device.create_shader_module(&include_wgsl!("alt_shader.wgsl"));
-
     let render_pipline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
       label: Some("Render Pipeline Layout"),
       bind_group_layouts: &[],
@@ -189,48 +185,11 @@ impl State {
       multiview: None,
     });
 
-    let alt_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-      label: Some("Alt Render Pipeline"),
-      layout: Some(&render_pipline_layout),
-      vertex: wgpu::VertexState {
-        module: &alt_shader,
-        entry_point: "vs_main",
-        buffers: &[],
-      },
-      fragment: Some(wgpu::FragmentState {
-        module: &alt_shader,
-        entry_point: "fs_main",
-        targets: &[wgpu::ColorTargetState {
-          format: config.format,
-          blend: Some(wgpu::BlendState::REPLACE),
-          write_mask: wgpu::ColorWrites::ALL,
-        }],
-      }),
-      primitive: wgpu::PrimitiveState {
-        topology: wgpu::PrimitiveTopology::TriangleList,
-        strip_index_format: None,
-        front_face: wgpu::FrontFace::Ccw,
-        cull_mode: Some(wgpu::Face::Back),
-        polygon_mode: wgpu::PolygonMode::Fill,
-        unclipped_depth: false,
-        conservative: false,
-      },
-      depth_stencil: None,
-      multisample: wgpu::MultisampleState {
-        count: 1,
-        mask: !0,
-        alpha_to_coverage_enabled: false,
-      },
-      multiview: None,
-    });
-
     Self {
-      alt_render_pipeline,
       config,
       device,
       queue,
       render_pipeline,
-      select_alt_pipeline: false,
       size,
       surface,
     }
@@ -245,22 +204,8 @@ impl State {
     }
   }
 
-  fn input(&mut self, event: &WindowEvent) -> bool {
-    match event {
-      WindowEvent::KeyboardInput {
-        input:
-          KeyboardInput {
-            state: ElementState::Pressed,
-            virtual_keycode: Some(VirtualKeyCode::Space),
-            ..
-          },
-        ..
-      } => {
-        self.select_alt_pipeline = !self.select_alt_pipeline;
-        true
-      }
-      _ => false,
-    }
+  fn input(&mut self, _event: &WindowEvent) -> bool {
+    false
   }
 
   fn update(&mut self) {
@@ -298,11 +243,7 @@ impl State {
         }],
         depth_stencil_attachment: None,
       });
-      if self.select_alt_pipeline {
-        render_pass.set_pipeline(&self.render_pipeline)
-      } else {
-        render_pass.set_pipeline(&self.alt_render_pipeline)
-      };
+      render_pass.set_pipeline(&self.render_pipeline);
       render_pass.draw(0..3, 0..1);
     }
 
