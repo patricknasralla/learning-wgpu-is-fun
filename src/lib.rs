@@ -1,5 +1,5 @@
+use wgpu::include_wgsl;
 use winit::{
-  dpi::PhysicalPosition,
   event::*,
   event_loop::{ControlFlow, EventLoop},
   window::{Window, WindowBuilder},
@@ -91,12 +91,14 @@ pub async fn run() {
 }
 
 struct State {
-  surface: wgpu::Surface,
+  alt_render_pipeline: wgpu::RenderPipeline,
+  config: wgpu::SurfaceConfiguration,
   device: wgpu::Device,
   queue: wgpu::Queue,
-  config: wgpu::SurfaceConfiguration,
+  render_pipeline: wgpu::RenderPipeline,
+  select_alt_pipeline: bool,
   size: winit::dpi::PhysicalSize<u32>,
-  clear_color: wgpu::Color,
+  surface: wgpu::Surface,
 }
 
 impl State {
@@ -142,18 +144,95 @@ impl State {
     };
     surface.configure(&device, &config);
 
+    let shader = device.create_shader_module(&include_wgsl!("shader.wgsl"));
+
+    let alt_shader = device.create_shader_module(&include_wgsl!("alt_shader.wgsl"));
+
+    let render_pipline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+      label: Some("Render Pipeline Layout"),
+      bind_group_layouts: &[],
+      push_constant_ranges: &[],
+    });
+
+    let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+      label: Some("Render Pipeline"),
+      layout: Some(&render_pipline_layout),
+      vertex: wgpu::VertexState {
+        module: &shader,
+        entry_point: "vs_main",
+        buffers: &[],
+      },
+      fragment: Some(wgpu::FragmentState {
+        module: &shader,
+        entry_point: "fs_main",
+        targets: &[wgpu::ColorTargetState {
+          format: config.format,
+          blend: Some(wgpu::BlendState::REPLACE),
+          write_mask: wgpu::ColorWrites::ALL,
+        }],
+      }),
+      primitive: wgpu::PrimitiveState {
+        topology: wgpu::PrimitiveTopology::TriangleList,
+        strip_index_format: None,
+        front_face: wgpu::FrontFace::Ccw,
+        cull_mode: Some(wgpu::Face::Back),
+        polygon_mode: wgpu::PolygonMode::Fill,
+        unclipped_depth: false,
+        conservative: false,
+      },
+      depth_stencil: None,
+      multisample: wgpu::MultisampleState {
+        count: 1,
+        mask: !0,
+        alpha_to_coverage_enabled: false,
+      },
+      multiview: None,
+    });
+
+    let alt_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+      label: Some("Alt Render Pipeline"),
+      layout: Some(&render_pipline_layout),
+      vertex: wgpu::VertexState {
+        module: &alt_shader,
+        entry_point: "vs_main",
+        buffers: &[],
+      },
+      fragment: Some(wgpu::FragmentState {
+        module: &alt_shader,
+        entry_point: "fs_main",
+        targets: &[wgpu::ColorTargetState {
+          format: config.format,
+          blend: Some(wgpu::BlendState::REPLACE),
+          write_mask: wgpu::ColorWrites::ALL,
+        }],
+      }),
+      primitive: wgpu::PrimitiveState {
+        topology: wgpu::PrimitiveTopology::TriangleList,
+        strip_index_format: None,
+        front_face: wgpu::FrontFace::Ccw,
+        cull_mode: Some(wgpu::Face::Back),
+        polygon_mode: wgpu::PolygonMode::Fill,
+        unclipped_depth: false,
+        conservative: false,
+      },
+      depth_stencil: None,
+      multisample: wgpu::MultisampleState {
+        count: 1,
+        mask: !0,
+        alpha_to_coverage_enabled: false,
+      },
+      multiview: None,
+    });
+
     Self {
-      surface,
+      alt_render_pipeline,
+      config,
       device,
       queue,
-      config,
+      render_pipeline,
+      select_alt_pipeline: false,
       size,
-      clear_color: wgpu::Color {
-        r: 0.4,
-        g: 0.2,
-        b: 0.3,
-        a: 1.0,
-      },
+      surface,
     }
   }
 
@@ -168,14 +247,16 @@ impl State {
 
   fn input(&mut self, event: &WindowEvent) -> bool {
     match event {
-      WindowEvent::CursorMoved { position, .. } => {
-        let PhysicalPosition { x, y } = position;
-        self.clear_color = wgpu::Color {
-          r: x / f64::from(self.size.width),
-          g: y / f64::from(self.size.height),
-          b: 0.5,
-          a: 1.0,
-        };
+      WindowEvent::KeyboardInput {
+        input:
+          KeyboardInput {
+            state: ElementState::Pressed,
+            virtual_keycode: Some(VirtualKeyCode::Space),
+            ..
+          },
+        ..
+      } => {
+        self.select_alt_pipeline = !self.select_alt_pipeline;
         true
       }
       _ => false,
@@ -188,28 +269,43 @@ impl State {
 
   fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
     let output = self.surface.get_current_texture()?;
+
     let view = output
       .texture
       .create_view(&wgpu::TextureViewDescriptor::default());
+
     let mut encoder = self
       .device
       .create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("Render Encoder"),
       });
+
     {
-      let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+      let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("Render Pass"),
         color_attachments: &[wgpu::RenderPassColorAttachment {
           view: &view,
           resolve_target: None,
           ops: wgpu::Operations {
-            load: wgpu::LoadOp::Clear(self.clear_color),
+            load: wgpu::LoadOp::Clear(wgpu::Color {
+              r: 0.1,
+              g: 0.2,
+              b: 0.3,
+              a: 1.0,
+            }),
             store: true,
           },
         }],
         depth_stencil_attachment: None,
       });
+      if self.select_alt_pipeline {
+        render_pass.set_pipeline(&self.render_pipeline)
+      } else {
+        render_pass.set_pipeline(&self.alt_render_pipeline)
+      };
+      render_pass.draw(0..3, 0..1);
     }
+
     // submit will accept anyting that implments IntoIter
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();
