@@ -7,17 +7,19 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+anyhow = "1.0.56"
+bytemuck = { version = "1.4", features = [ "derive" ] }
 cfg-if = "1.0.0"
-winit = "0.26"
 env_logger = "0.9"
+image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
 log = "0.4"
-wgpu = "0.12.0"
 pollster = "0.2.5"
+wgpu = "0.12.0"
+winit = "0.26"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.6"
 console_log = "0.2.0"
-wgpu = { version = "0.12", features = ["webgl"]}
 wasm-bindgen = "0.2.76"
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3.53", features = [
@@ -25,3 +27,5 @@ web-sys = { version = "0.3.53", features = [
     "Window",
     "Element",
 ]}
+wgpu = { version = "0.12", features = ["webgl"]}
+
